@@ -27,6 +27,14 @@ var outputDiv;
 var yourLocation;		//marker for your location
 var yourPos;			//your latLong
 var markerIterator;	//records which marker must be added next
+var expandRadius =0;
+var expandCoef=16000; //about 10 miles
+var metersPerMin=75/60*1609/2; //going 75 miles per hour the number of meters the person will travel in 30 seconds, only half because it is rate of increase of radius
+var maxETA = 13;  //number of time steps used for latest arrival
+var etaStep = 5;
+var searchRad = 0;
+var searchArea ='';
+var directions;
 
 //calls initialize on window load
 google.maps.event.addDomListener(window, 'load', initialize);
@@ -35,7 +43,7 @@ google.maps.event.addDomListener(window, 'load', initialize);
 function initialize() 
 {
 	
-	$('[data-slider]').on('change.fndtn.slider', function(){
+	/*$('[data-slider]').on('change.fndtn.slider', function(){
   if (document.getElementById("eta").value == 25) 
       {
       	document.getElementById("sliderOutput3").innerHTML = "Max ETA: Any Time";
@@ -44,7 +52,7 @@ function initialize()
       {
       	document.getElementById("sliderOutput3").innerHTML = "Max ETA: " + timeConvert(document.getElementById("eta").value * 5) + " mins" ;
       }
-});
+});*/
   	outputDiv = document.getElementById('directionsPanel');
   	directionsDisplay = new google.maps.DirectionsRenderer();
   	var chicago = new google.maps.LatLng(41.850033, -87.6500523);
@@ -80,14 +88,27 @@ function initialize()
 
 }
 
-//Function called by website when new route is proposed (submit button pressed)
-function newRoute() 
+function newRoute()
 {
-	load();
+	expandRadius=0;	
+	constructRoute();
+}
+
+function expandSearch()
+{
+	removeSearchBut();
+	expandRadius+=1;
+	constructRoute();
+}
+
+//Function called by website when new route is proposed (submit button pressed)
+function constructRoute() 
+{
+    load();
     changePanel("hide");
     removeRows();	//clear any left over data
     numPlaces = 0;
-	startDest = document.getElementById('begin').value;
+    startDest = document.getElementById('begin').value;
     endDest = document.getElementById('finish').value;
     var info = document.getElementById('directionsPanel');
     info.innerHTML = "";	//clear output
@@ -95,6 +116,7 @@ function newRoute()
     clearMarkers();		//clear any residual markers
     numToPrint = staticNumPrint;
     markerIterator = 0;	//makes it so markers will be added appropriately
+    moreResults();
     if (startDest == "Current Location") 	//if Cur.Loc that means start Loc should be yourPos
     {		
     	startDest = yourPos;
@@ -119,6 +141,7 @@ function calcRoute(start, end)
 		if (status == google.maps.DirectionsStatus.OK) 
 		{
       	directionsDisplay.setDirections(response);
+      	directions = response;
       	if (yourLocation) 	//only set initialized marker to null
       	{
       		yourLocation.setMap(null);
@@ -147,14 +170,29 @@ function calcRoute(start, end)
 //and calls distanceMatrix as a callback
 function performSearch(bound) 
 {
-  var stop = document.getElementById('stop').value;
-  var request = 
-  {
-    bounds: bound,
-    keyword: stop,
-    key: googKey
-  };
-  
+    var stop = document.getElementById('stop').value;
+	searchRad=0;
+	greaterCircalDist = greaterCircleDistance(bound)
+	if (greaterCircalDist > 16000) {
+		searchRad= greaterCircalDist;
+	}
+	else {
+		searchRad= 16000;
+	}
+	if (document.getElementById("eta").value  < maxETA) {
+	    searchRad=document.getElementById("eta").value * etaStep * metersPerMin;
+	}
+	searchRad = searchRad + expandRadius*expandCoef;
+	if (searchRad > 50000) {
+	   searchRad=50000	
+	} 
+	var request = 
+  	{
+    	location: bound.getCenter(),
+    	radius: searchRad, //about 10 miles
+    	keyword: stop,
+   	 key: googKey
+ 	 };
   placeService.nearbySearch(request, distanceMatrix);
 }
 
@@ -163,11 +201,29 @@ function distanceMatrix(results, status)
 {
   	if (status != google.maps.places.PlacesServiceStatus.OK) 
   	{
-   	 	outputDiv.innerHTML = "Nearby Search Error: " + status;
+   	 	if (status=="ZERO_RESULTS")
+   	 	{
+   	 		searchArea= new google.maps.Circle({
+		      strokeColor: '#FF0000',
+		      strokeOpacity: 0.8,
+		      strokeWeight: 2,
+		      fillColor: '#FF0000',
+		      fillOpacity: 0.35,
+		      map: map,
+		      center: map.getBounds().getCenter(),
+		      radius: searchRad
+		    });
+   	 		outputDiv.innerHTML ="<b>No Results Found</b> <br>Consider checking search parameters or expanding search radius";
+   	 		expandSearchButton();	
+   	 	}
+   	 	else
+   	 	{
+   	 		outputDiv.innerHTML = "Nearby Search Error: " + status;
+   	 	}
    	 	doneLoading();
    	 	return;
 	}
-	
+  showArea()
   var orig = [startDest, endDest];
   var dest = [endDest];
   for (var i = 0; i < results.length; i++) 	//for each result of search add loc variable to poi
@@ -354,15 +410,14 @@ function dmCallback(response, status)
     }
     
   }
-  
-   outputDiv.innerHTML += '<h2><center>Normal Time = ' + destTime.text + ' for ' + round(destDist.value * mTOmiles, 1)
+   outputDiv.innerHTML = '<h2><center>Normal Time = ' + destTime.text + ' for ' + round(destDist.value * mTOmiles, 1)
    							+ ' miles</center></h2>';
    quickSort(0, poi.length - 1);
-   if (document.getElementById("eta").value != 25) //check if there are eta restrictions
+   if (document.getElementById("eta").value != maxETA) //check if there are eta restrictions
    {
    		for (var i = 0; i < poi.length; i++)  //determine if any locations should be eliminated due to eta restrictions
    		{
-   			if (Math.floor(poi[i].time1/60) > document.getElementById("eta").value * 5) 
+   			if (Math.floor(poi[i].time1/60) > document.getElementById("eta").value * etaStep + expandCoef/(metersPerMin)) 
    			{
    				poi.splice(i, 1);
    				i--;//done to not miss any values after one has been deleted
@@ -417,6 +472,7 @@ function screenUpdate(startVal)
  	}, i * 200);
   }
   moreResults();
+  expandSearchButton();	
 }
 
 //creates more results button
@@ -444,6 +500,30 @@ function moreResults()
     moreResultsBut = false;
   }
   
+}
+
+function expandSearchButton()
+{
+	if (!moreResultsBut && poi.length < 20 && searchRad <50000) //No more results button and there are less results than we would like to have, and room to expand
+	{
+		var parent = document.getElementById('moreResults');
+		var child = document.createElement('button.fit');
+		var id = 'expandSearchButton';
+          child.setAttribute('id', id);
+		child.setAttribute('class', 'button');
+		child.setAttribute('type', 'button');
+		child.setAttribute('onclick', "expandSearch();");    
+		child.innerHTML="Expand Search Area";
+	    parent.appendChild(child);
+	  }
+}
+
+function removeSearchBut()
+{
+	
+    var parent = document.getElementById('moreResults');
+    var child = document.getElementById('expandSearchButton');
+    parent.removeChild(child); 
 }
 
 //creates marker for given location, and creates listener for if marker is pressed
@@ -484,7 +564,10 @@ function clearMarkers()
   {
     poi[i].marker.setMap(null);
   }
-  
+  if (searchArea != '') {
+  	searchArea.setMap(null);
+  }
+  searchArea='';
   poi = [];
 }
 
@@ -811,12 +894,39 @@ function highlight(textBox)
     };
 }
 
-//changes eta to be value of the eta range picker
-function chooseETA()
-{
-if (document.getElementById("eta").value == 100) 
-      {
-      	document.getElementById("sliderOutput3").innerHTML = "Max ETA: Any Time";
-      }
-}
 
+function greaterCircleDistance(bounds) {	
+	var center = bounds.getCenter();
+	var ne = bounds.getNorthEast();
+	
+	// r = radius of the earth in statute miles
+	//var r = 3963.0;  
+	var r = 6371000;  
+	
+	// Convert lat or lng from decimal degrees into radians (divide by 57.2958)
+	var lat1 = center.lat() / 57.2958; 
+	var lon1 = center.lng() / 57.2958;
+	//var lon1=0
+	var lat2 = ne.lat() / 57.2958;
+	var lon2 = ne.lng() / 57.2958;
+	//var lon2=0
+	
+	// distance = circle radius from center to Northeast corner of bounds
+	var dis = r * Math.acos(Math.sin(lat1) * Math.sin(lat2) + 
+	  Math.cos(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1));
+	  return dis
+	}
+	
+function showArea()
+{
+   	 		searchArea= new google.maps.Circle({
+		      strokeColor: '#FF0000',
+		      strokeOpacity: 0.8,
+		      strokeWeight: 2,
+		      fillColor: '#FF0000',
+		      fillOpacity: 0.35,
+		      map: map,
+		      center: map.getBounds().getCenter(),
+		      radius: searchRad
+		    });
+		}

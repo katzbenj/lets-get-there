@@ -18,16 +18,21 @@
 		<script src="js/init.js"></script>
 		<script type="text/javascript" src="http://maps.googleapis.com/maps/api/js?libraries=places,key=AIzaSyBAbywmo00_5ljkLL_XcfJyRSquJjFwxSU"></script>
 		<script src="js/map.js"></script>
-		<script src="foundation-5/js/foundation.min.js"></script>
-        <script src="foundation-5/js/vendor/modernizr.js"></script>
-		<link rel="stylesheet" href="foundation-5/css/foundation.css" />
 		<noscript>
 			<link rel="stylesheet" href="css/skel.css" />
 			<link rel="stylesheet" href="css/style.css" />
 			<link rel="stylesheet" href="css/style-wide.css" />
+			<link rel="stylesheet" href="css/custom.css" />
 			
 		</noscript>
-		<!--[if lte IE 8]><link rel="stylesheet" href="css/ie/v8.css" /><![endif]-->
+
+		<!-- Include Simple Slider JavaScript and CSS -->
+		  <script src="slider/js/simple-slider.js"></script>
+
+  		<link href="slider/css/simple-slider.css" rel="stylesheet" type="text/css" />
+  		<link href="slider/css/simple-slider-volume.css" rel="stylesheet" type="text/css" />  		
+  		
+  		<!--[if lte IE 8]><link rel="stylesheet" href="css/ie/v8.css" /><![endif]-->
 	</head>
 	<body>
 
@@ -45,18 +50,21 @@
     					<li >Stopover <input type="text" id="stop" value="Coffee"></li>
     					<li ></li>
     					<li >
-    						<div class="row">
+    						  <input type="text" data-slider="true" data-slider-range="1,13" data-slider-step="1" data-slider-highlight="true" value="13" id='eta'>
+   
+    						
+    						<!-- <div class="row">
     							<div class="small-3 columns">
     								<span id="sliderOutput3"></span>
   								</div>
   								<div class="small-12 columns">
     								<div class="range-slider" data-slider=25 data-options = "start: 1; end: 25;" > <!--2 hours with a timestep of 5 mins and 1 extra for anytime-->
-      									<span class="range-slider-handle" role="slider" tabindex="0"></span>
+      									<!--<span class="range-slider-handle" role="slider" tabindex="0"></span>
       									<span class="range-slider-active-segment"></span>
-      									<input id = 'eta' type="hidden">
+      									<input id = 'eta' type="hidden" value=25>
     								</div>
   								</div>
-							</div>
+							</div>-->
   						</li >
 
     					<li ><button.fit class ="button" type="button" onclick="newRoute();">Submit</button></li>
@@ -150,28 +158,28 @@
 					</div>
 
 			</div>
-	<script src="foundation-5/js/vendor/jquery.js"></script>
-	<script src="foundation-5/js/foundation.min.js"></script>
-
-	<script>
-      $(document).foundation(
-      {
-  /*slider: 
-  {
-    on_change: function()
-    {
-      if (document.getElementById("eta").value == 100) 
-      {
-      	document.getElementById("sliderOutput3").innerHTML = "Max ETA: Any Time";
-      }
-      //else 
-      //{
-      //	document.getElementById("sliderOutput3").innerHTML = $('#slider').attr('data-slider')
-      //}
-    }
-  }*/
-});
-      
-	</script>
 	</body>
-</html>
+<script>
+  $("[data-slider]")
+    .each(function () {
+      var input = $(this);
+      $("<span>")
+        .addClass("output")
+        .insertBefore($(this));
+    })
+    .bind("slider:ready slider:changed", function (event, data) {
+       if(data.value==13) {
+      	$(this)
+        	.prevAll(".output:first")
+        	.html("Stop Anytime");    
+       }
+       else {
+       	 $(this)
+        	.prevAll(".output:first")
+        	.html("Stop Within <b>" +  data.value * 5 + "</b> Minutes");          
+        	 }  
+    });
+  </script>
+  
+
+  </html>
