@@ -33,6 +33,9 @@ var metersPerMin=75/60*1609/2; //going 75 miles per hour the number of meters th
 var maxETA = 13;  //number of time steps used for latest arrival
 var etaStep = 5;
 var searchRad = 0;
+var searchCenter;
+var maxSearchDist = 50000 //maximum number of meters radius of search can be
+var minSearchDist = 16000 // minimum number of meters we are willing to allow the radius of the search to be (if we let it get too small people traveling small distances will get no results)
 var searchArea ='';
 var directions;
 
@@ -171,25 +174,28 @@ function calcRoute(start, end)
 function performSearch(bound) 
 {
     var stop = document.getElementById('stop').value;
-	searchRad=0;
-	greaterCircalDist = greaterCircleDistance(bound)
-	if (greaterCircalDist > 16000) {
+	/*searchRad=0;
+	greaterCircalDist = = greaterCircleDistance(bound.getCenter(), bound.getNorthEast());
+	findSearchCenter(greaterCircalDist, bound);
+	if (greaterCircalDist > minSearchDist) {
 		searchRad= greaterCircalDist;
 	}
-	else {
-		searchRad= 16000;
+	else {  //min search distance
+		searchRad= minSearchDist;
 	}
-	if (document.getElementById("eta").value  < maxETA) {
+	if (document.getElementById("eta").value  < maxETA) { //a maximum time until arrival has been set
 	    searchRad=document.getElementById("eta").value * etaStep * metersPerMin;
 	}
 	searchRad = searchRad + expandRadius*expandCoef;
-	if (searchRad > 50000) {
-	   searchRad=50000	
+	if (searchRad > maxSearchDist) { //max search distance
+	   searchRad=maxSearchDist	
 	} 
+	*/
+		var searchVals = findSearchCenter(bound);
 	var request = 
   	{
-    	location: bound.getCenter(),
-    	radius: searchRad, //about 10 miles
+    	location: searchVals.center,
+    	radius: searchVals.radius, //about 10 miles
     	keyword: stop,
    	 key: googKey
  	 };
@@ -504,7 +510,7 @@ function moreResults()
 
 function expandSearchButton()
 {
-	if (!moreResultsBut && poi.length < 20 && searchRad <50000) //No more results button and there are less results than we would like to have, and room to expand
+	if (!moreResultsBut && poi.length < 20 && searchRad <maxSearchDist) //No more results button and there are less results than we would like to have, and room to expand
 	{
 		var parent = document.getElementById('moreResults');
 		var child = document.createElement('button.fit');
@@ -895,20 +901,19 @@ function highlight(textBox)
 }
 
 
-function greaterCircleDistance(bounds) {	
-	var center = bounds.getCenter();
-	var ne = bounds.getNorthEast();
-	
-	// r = radius of the earth in statute miles
+function greaterCircleDistance(start, end) {	
+	//var center = bounds.getCenter();
+	//var ne = bounds.getNorthEast();
+		// r = radius of the earth in statute miles
 	//var r = 3963.0;  
 	var r = 6371000;  
 	
 	// Convert lat or lng from decimal degrees into radians (divide by 57.2958)
-	var lat1 = center.lat() / 57.2958; 
-	var lon1 = center.lng() / 57.2958;
+	var lat1 = start.lat() / 57.2958; 
+	var lon1 = start.lng() / 57.2958;
 	//var lon1=0
-	var lat2 = ne.lat() / 57.2958;
-	var lon2 = ne.lng() / 57.2958;
+	var lat2 = end.lat() / 57.2958;
+	var lon2 = end.lng() / 57.2958;
 	//var lon2=0
 	
 	// distance = circle radius from center to Northeast corner of bounds
@@ -926,7 +931,97 @@ function showArea()
 		      fillColor: '#FF0000',
 		      fillOpacity: 0.35,
 		      map: map,
-		      center: map.getBounds().getCenter(),
+		      center: searchCenter,
 		      radius: searchRad
 		    });
 		}
+
+function findSearchCenter(bounds)
+{
+	var distance = greaterCircleDistance(bounds.getCenter(), bounds.getNorthEast());
+	if (document.getElementById("eta").value == maxETA)	//no arrival time restrictions, make sure trip is less than 50,000 meters in radius
+	{
+		if (distance < maxSearchDist)
+		{
+			searchRad = distance;
+			if (distance > minSearchDist)
+			{
+				searchCenter = bounds.getCenter() 	
+			}
+			else 
+			{
+				searchCenter= minSearchDist;			
+			}
+		}
+		else //drive is too long, find suitable center location
+		{
+			searchRad = maxSearchDist;
+			searchCenter = findCenterOfDirections(maxSearchDist, "distance");
+		}
+	}
+	else //eta restrictions present
+	{
+		searchCenter = findCenterOfDirections(document.getElementById("eta").value * 5 * 60 / 2, "duration");
+		var startLoc = directions.routes[0].legs[0].start_location;
+		searchRad = greaterCircleDistance(searchCenter, startLoc) + 1000; //add a kilometer
+	}
+	if (searchRad > maxSearchDist)
+	{
+		searchRad = maxSearchDist;
+	}
+	var searchVal = {
+		center: searchCenter,
+		radius: searchRad + expandCoef * expandRadius
+	};
+	return searchVal;
+}
+
+function findCenterOfDirections(maxVal, attribute) //attribute must be 'distance' or 'duration' (for time)
+{
+		var steps = directions.routes[0].legs[0].steps;
+		var val = 0;
+		var inc = 0;
+		while (val < maxVal)
+		{
+			val += steps[inc][ attribute ].value;
+						marker(steps[inc].start_location);
+			inc += 1;
+		}
+				inc -= 1;
+		var lastStep = steps[inc][ attribute ].value;
+		var excessVal= val - maxVal;
+		
+				var ratio = excessVal / lastStep;
+				var tempStepToUse = Math.ceil(ratio * steps[inc].path.length);
+		
+				var stepToUse = 0;
+				for (var i=1; i < steps[inc].path.length && excessVal >0; i+=1)
+				{
+					if (attribute == "duration")
+					{
+						var totalStepTime = steps[inc].duration.value;
+						var totalStepDist = steps[inc].distance.value;
+						var avgSpeed = totalStepDist / totalStepTime;
+						var distTraveled = greaterCircleDistance(steps[inc].path[i],steps[inc].path[i-1]);
+						excessVal -= distTraveled / avgSpeed;
+					}
+					else
+					{
+						excessVal -= greaterCircleDistance(steps[inc].path[i],steps[inc].path[i-1]);
+					}
+					stepToUse = i;
+				}
+			
+				
+		return steps[inc].path[stepToUse];
+}
+
+function marker(locVal) {
+	
+					var marker = new google.maps.Marker(	//call to google server to create a marker for given location
+				{
+    					map: map,
+    					position: locVal,
+    					animation: google.maps.Animation.DROP,
+  				});
+ }
